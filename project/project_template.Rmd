@@ -1,0 +1,207 @@
+---
+title: "Impacts of the request expiry feature has on users' behaviour"
+author: "Nengruo, Yantong, Lucy, Bella "
+subtitle:Fianl Project
+output:
+  ioslides_presentation: default
+  widescreen: yes
+---
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+library(readxl)
+library(zoo)
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+requests <- read_excel("data/requests_Mar18_2019.xlsx")
+#read in the data
+```
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE}
+names(requests) <- c("id", "recipient_id", "actor_id", "requestable_model", "day_created", "day_expired", "day_updated", "state") #rename the variables in the "requests" data frame
+
+requests_new <- requests %>% mutate(day_created=dmy(day_created), day_expired=dmy(day_expired), year_created = year(day_created), month_created = month(day_created)) %>% mutate(response_time = day_expired - day_created, request_time = ifelse(day_created <= "2018-11-21", "before", "after"), month_year = as.Date(as.yearmon(day_created)))
+#create a new data frame, "requests_new", from the "requests" dataset, changing the format of the dates to have R to recognize them, as well as add a few new variables named "year_created", "month_created", "month_year"(year, month, and both year and month of the date of "day_created" variable), "response_time"(number of days that take for a request to be responded), "request_time"(request_time is "before" is the request was created before the launch of the new feature and "after" is the request was created after the launch of the new feature)
+```
+
+# Introduction
+
+## Introduction
+In this project, we are given several datasets from Riipen, an education technology company that helps connecting schools and employers to create project based learning opportunities. They provide a platform that allows employers to apply to work with professors as well as allows professors to apply to work with companies. And in order to reduce users’ frustration caused by waiting long time for responses from others, the company launched a new feature named “request expiry” in November, 2018. This new feature requires users to respond to requests with 14 days, or they will expire.
+
+## Obejctives
+Our objective is to discover whether Riipen launch of the new feature had any impact on the users’ behaviours through mainly using the “requests” dataset and comparing volume of requests, request response time, request acceptance rate, and request expiry rate.
+
+
+# Vloume of requests
+```{r,echo=FALSE, message=FALSE, warning=FALSE}
+requests_dat <- requests_new %>% filter(!is.na(requestable_model)) %>% filter(!is.na(day_created)) %>% group_by(requestable_model, request_time) %>% summarise(num_requests = n())
+#filter out the NA's in the "requestable_model" and day_created" variables and group the requests by their type(project or course) and their created time(before or after the launch of new feature), count the total number of requests within each group and store the results in the object "requests_dat"
+```
+
+## Avgerage Monthly Requests Volume
+```{r,echo=FALSE, message=FALSE, warning=FALSE}
+requests_dat %>% group_by(requestable_model, request_time) %>% summarise(avg_monthly_requests = ifelse(request_time == "before", num_requests/7, num_requests/4))
+#use the data in requests_dat to compute the average monthly requests volume before and after the launch of "request expiry" feature for both type of requests by deviding the total number of requests(before or after) by the number of months(7 months before and 4 months after according to the "requests" dataset)
+```
+- Monthly volume of requests for course was more after the new feature launched
+- Monthly volume of requests for project became less after the new feature launched
+- The request expiry feature might lead to more company applying course but less professor applying to work with project.
+
+
+## Volume Of Requests(Project)
+```{r,echo=FALSE, message=FALSE, warning=FALSE}
+requests_dat_new <- requests_new %>% mutate(month_year = as.Date(month_year))
+#change the format of the month_year variable in the "requests_new" data frame and store the new data frame in "requests_dat_new"
+requests_dat_new <- group_by(requests_dat_new, month_year)
+#group the requests data in "requests_dat_new" dataframe by their created time(year and month)
+requests_summary <- summarise(requests_dat_new, volume_of_project = sum(requestable_model == 'project'), volume_of_course=sum(requestable_model == 'course'))
+#summarise the number of requests for project and course separately and store the result in "requests_summary"
+```
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.height=4}
+ggplot(requests_summary, aes(x=month_year, y=volume_of_project)) + geom_point() + geom_smooth(method="lm", se=FALSE) + theme_minimal() +geom_vline(xintercept = as.Date('2018-11-21')	, color="red") + ggtitle("Association between request(of project) volume and time")
+#plotted the number of requests for project within each month and draw a line of best fit(blue line) as well as a red line that represents the day on which the new feature was launched.
+
+mod_project <- lm(volume_of_project ~ month_year, data = requests_summary)
+summary(mod_project)$coefficients
+#fit the linear regression model to see association between requests of project and time
+```
+
+## Volume Of Requests(Project)
+
+- Create scatterplot to visualize the association between number of requests for project(per month) and time
+- Blue line: line of best fit     Red line: represent 2018-11-21
+- Outliers at Apr 2018(when "request" feature launched) and Aug 2018(database clean up event)
+- But request volume tend to stay relitively constant overtime
+- Fit in simple linear regression model to find out the relationship between number of requests for project and time
+- p-value = 0.547, no evidence against the null hypothesis that there's no relationship between project request volume and time
+- The new feature did not have much impact on valume of requests for peoject
+- Limitation: only have datas on a few months
+
+## Volume Of Requests(Course)
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.height=4}
+ggplot(requests_summary, aes(x=month_year, y=volume_of_course)) + geom_point() + geom_smooth(method="lm", se=FALSE) + theme_minimal()+geom_vline(xintercept = as.Date('2018-11-21')	, color="red") + ggtitle("Association between request(of course) volume and time")
+#plotted the number of requests for course within each month and draw a line of best fit(blue line) as well as a red line that represents the day on which the new feature was launched.
+mod_course <- lm(volume_of_course ~ month_year, data = requests_summary)
+summary(mod_course)$coefficients
+#fit the linear regression model to see association between requests of course and time
+```
+
+## Volume Of Requests(Course)
+- Create scatterplot to visualize the association between number of requests for course(per month) and time
+- Linear, moderate, positive association
+- Blue line: line of best fit     Red line: represent 2018-11-21
+- p-value = 0.0040, indicating that there is linear association between number of requests for course and time
+- Volume of requests tend to increase more rapidly after 2018-11-21
+- Launch of the new feature might increase the volume of requests for course
+- Limitation: only have datas on a few months 
+
+# Request Response Time
+## Request Response Time
+```{r,echo=FALSE, message=FALSE, warning=FALSE, include = TRUE, results = "hide", fig.height=4}
+requests_new %>% filter(state != "expired" | state != "pending") %>% filter(day_created != "2018-08-30") %>% ggplot(aes(x = request_time, y = response_time)) + geom_boxplot() + ggtitle("Response time before vs after the launch of new feature")
+#filter out the expired requests and pending requests(requests that have no response) as well as ones that were created on 2018-08-30(day of database clearence event) and then use boxplot to visualize and compare the distribution of response time of the two group of requests(requests that were created before and after the new feature launched)
+requests_new %>% filter(state != "expired" | state != "pending") %>% filter(day_created != "2018-08-30") %>% filter(request_time == "before") %>% summarize(quantile(response_time,0.25),median(response_time), quantile(response_time,0.75))
+#calculte the median response time and IQR for requests created before 2018-11-21
+requests_new %>% filter(state != "expired" | state != "pending") %>% filter(day_created != "2018-08-30") %>% filter(request_time == "after") %>% summarize(quantile(response_time,0.25),median(response_time), quantile(response_time,0.75))
+#calculte the median response time and IQR for requests created after 2018-11-21
+```
+
+## Request Response Time
+- Many response time of 0 day on Aug.30th due to database clearance event, filter out these data first
+- Both group have outliers above their upper whiskers. Before group has more outliers and outliers on the tail of the distribution are more extreme. 
+- Median response time before(18 days) was was longer than median response time after(4 days) the launch of new feature
+- IQR before: 18 days, IQR after: 15 days
+- Response time shortened after the launch of new feature
+
+
+# Request Acceptance Rate
+
+## Request Acceptance Rate
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+set.seed(123)
+repetitions <- 1000
+simulated_stats <- rep(NA, repetitions)
+before <- requests_new %>% filter(request_time == "before")
+after <- requests_new %>% filter(request_time == "after")
+
+accepted_before <- before %>% filter(state == 'accepted') %>% summarize(n())
+accepted_after <- after %>% filter(state == 'accepted') %>% summarize(n())
+n_before <- before %>% filter(state != 'pending') %>% summarize(n())
+n_after <- after %>% filter(state != 'pending') %>% summarize(n())
+
+requests_dat_new <- requests_new %>% filter(state != 'pending')
+
+test_stat <- as.numeric(accepted_before/n_before - accepted_after/n_after)
+#calcualte test statistic
+
+for (i in 1:repetitions){
+  sim <- requests_dat_new %>% mutate(request_time = sample(request_time))
+  accepted_before <- sim %>% filter(request_time == "before" & state == "accepted") %>% summarize(n())
+  accepted_after <- sim %>% filter(request_time == "after" & state == 'accepted') %>% summarize(n())
+  n_before <- sim %>% filter(request_time == "before") %>% summarize(n())
+  n_after <- sim %>% filter(request_time == "after") %>% summarize(n())
+  
+  rate_diff <- accepted_before/n_before - accepted_after/n_after
+  simulated_stats[i] <- as.numeric(rate_diff)
+}
+#simulate test statistics under H0 and store the values in an object named "simulated_stats
+
+sim <- data_frame(rate_diff = simulated_stats)
+#turn "simulated_stats" into a data frame named "sim" in order for plotting
+ggplot(sim, aes(x=rate_diff)) + geom_histogram(binwidth = 0.01) + ggtitle("Simulated difference in acceptance rate before and after the launch of new feature")
+#plot histogram for the simulated test statistics
+extreme_count <- sim %>% filter(rate_diff >= abs(test_stat) | rate_diff <= -1*abs(test_stat)) %>% summarise(n())
+p_value <- as.numeric(extreme_count) / repetitions
+#calaulate p-value
+test_stat
+p_value
+```
+
+- Distribution of test statistics that are simulated under H0
+- Centered at 0
+
+## Request Acceptance Rate
+
+- Conduct hypothesis test to see if there is any change in request acceptance rate before and after the new feature launched
+- H0: acceptance rate before = acceptance rate after(acceptance rate before - acceptance rate after = 0)
+  H1: acceptance rate before $\neq$ acceptance rate after(acceptance rate before - acceptance rate after $\neq$ = 0)
+- test statistic = 0.24
+- p-value = 0, showing very strong evidence against H0 that acceptance rate before equals acceptance rate after
+- Test statistic shows evidence that acceptance rate before was higher than after the "request expiry" feature launched.
+- Limitation: might made Type I error(reject H0 when H0 is true)
+ 
+# Request Expiry Rate
+
+## Boxplot
+```{r,echo=FALSE, message=FALSE, warning=FALSE, fig.height=3}
+expiry_rate <- requests_new %>% group_by(request_time, month(day_created)) %>% summarise(expiry_rate = sum(state == "expired")/n())
+#group the requests_new data by their created time(before or after the launch of the new feature and month) and compute expiry rate for each month and store the results in "expiry_date"
+expiry_rate %>% ggplot(aes(x=request_time, y = expiry_rate )) + geom_boxplot() + ggtitle("Distribution of monthly expiry rate before vs after the launch of new feature")
+#plot boxplot of the distribution of monthly expiry rate before and after the launch of the new feature based on the data in "expiry_rate"
+```
+
+## Request Expiry Rate
+
+- Use boxplot for visualizing and comparing the distribution of expiry rate(of each month) before and after the launcn of "request expiry" feature
+- Median expiry rate after is higher than median expiry rate before the launch of new feature
+- Only have expiry rate for a few month(not a large sample size), but there is obvious difference between the two distributions
+- Generally, expiry rate after is higher than expiry rate before the launch of new feature
+- Since the "request expiry" feature was launched after 2018-11-21, the requests created before would not expire until 2018-12-06(14 days after the new feature launched)
+
+# Conclusion
+
+## Conclusion
+Our main conclusion for this new expiry feature Riipen launch is that the release of this new feature has a certain degree of impact on the users’ behaviours. By investigate the volume of requests of project and course over time as our first step, the data we got indicates that the launch of request expiry largely prompts professors to have more requests. Then we find out the request rate before and after the new feature launched. Although we did not get much information from this one since the rates are similar.
+
+## Conclusion
+When we next look at the request acceptance rate, our result shows very strong evidence that the acceptance rate before and after the expiry feature launched are different, and the rate after the feature launched are higher than before. Once again indicating that the new feature “request expiry” does have an effect on users’ behaviours. Our last research problem is the changing of the request expiry rate after the new feature launched and we found that the request expiry rate after the new feature launched are higher than the request expiry rate before the new feature launched. When we have studied all of the questions above, all the results clearly points to the emergence of this new features changed users’ behaviours to some extent. Additionally, this new feature has not been launched for a long time, if we want more accurate information about the impact on users’ behaviours, we need longer time and more data to support our research.
+
+
+
+
